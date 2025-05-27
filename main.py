@@ -1,8 +1,8 @@
 import os
 from dotenv import load_dotenv
 from google.adk.cli.fast_api import get_fast_api_app
-from agent import root_agent # Import your agent from agent.py
-from .tools import store_chat_message
+from agent import root_agent # Import my agent from agent.py
+from tools import store_chat_message
 
 # --- Load Environment Variables ---
 load_dotenv()

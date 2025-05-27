@@ -2,7 +2,7 @@ import os
 import psycopg2
 import datetime
 # No more explicit Tool/FunctionTool import here.
-# We will just define the functions.
+# I will just define the functions.
 
 # --- Database Connection and Query Functions ---
 def _get_db_connection():
@@ -15,10 +15,20 @@ def _get_db_connection():
             host="localhost",
             port="5432"
         )
+        # Ensure chat_history table exists
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS chat_history (
+                    id SERIAL PRIMARY KEY,
+                    content TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            conn.commit()
         return conn
     except Exception as e:
-        print(f"Database connection error: {e}")
-        return {"error": f"Database connection error: {e}"}
+        print(f"Database connection or table creation error: {str(e)}")
+        return {"error": f"Database connection or table creation error: {str(e)}"}
 
 def record_assessment(
     instrument_type: str,
@@ -63,27 +73,42 @@ def record_assessment(
 def store_chat_message(content: str) -> dict:
     """
     Stores a new message in the 'chat_history' table.
+    Returns a dictionary with either:
+    - {"status": "success", "message_id": id} on success
+    - {"error": "error message"} on failure
     """
     conn = _get_db_connection()
     if isinstance(conn, dict) and "error" in conn:
+        # Error already occurred in _get_db_connection
         return conn
+    
+    if not conn: # Should not happen if _get_db_connection returns error dict
+        return {"error": "Failed to establish database connection."}
+
     try:
-        cur = conn.cursor()
-        cur.execute(
-            """
-            INSERT INTO chat_history (content)
-            VALUES (%s) RETURNING id;
-            """,
-            (content,)
-        )
-        message_id = cur.fetchone()[0]
-        conn.commit()
-        cur.close()
-        conn.close()
-        return {"status": "success", "message_id": message_id}
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO chat_history (content)
+                VALUES (%s) RETURNING id;
+                """,
+                (content,)
+            )
+            message_id = cur.fetchone()[0]
+            conn.commit()
+            print(f"Successfully stored chat message with ID: {message_id}, Content: {content[:50]}...") # Log success
+            return {"status": "success", "message_id": message_id}
     except Exception as e:
-        print(f"Error storing chat message: {e}")
-        return {"error": f"Database query error: {e}"}
+        print(f"Error storing chat message in DB: {str(e)}")
+        if conn:
+            try:
+                conn.rollback() # Rollback on error
+            except Exception as rb_e:
+                print(f"Error during rollback: {rb_e}")
+        return {"error": f"Database query error during store_chat_message: {str(e)}"}
+    finally:
+        if conn and not (isinstance(conn, dict) and "error" in conn):
+            conn.close()
 
 def get_recent_chat_history(limit: int = 5) -> list[dict]:
     """
@@ -110,11 +135,15 @@ def get_recent_chat_history(limit: int = 5) -> list[dict]:
         print(f"Error retrieving chat history: {e}")
         return {"error": f"Database query error: {e}"}
 
-def run_sql_query(query: str) -> dict:
+def run_sql_query(inputs: dict) -> dict:
     """
     Executes a SQL query on the OCAT database and returns the results.
+    Expects a dict input: {"query": "..."}
     WARNING: This allows arbitrary SQL execution. Use with caution!
     """
+    query = inputs.get("query")
+    if not query:
+        return {"error": "No SQL query provided in 'query' key."}
     conn = _get_db_connection()
     if isinstance(conn, dict) and "error" in conn:
         return conn
