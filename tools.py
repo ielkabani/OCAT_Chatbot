@@ -1,6 +1,7 @@
 import os
 import psycopg2
 import datetime
+from decimal import Decimal # Import Decimal
 # No more explicit Tool/FunctionTool import here.
 # I will just define the functions.
 

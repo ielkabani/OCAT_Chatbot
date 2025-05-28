@@ -1,20 +1,17 @@
 # To run this api uvicorn api:app --reload 
-import os
-import time
+# import os # Unused
+# import time # Unused
 import asyncio
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+# Import your agent and tools (once)
 from agent import root_agent
 from tools import store_chat_message
-from google.adk.runners import Runner, InvocationContext, Session
+from google.adk.runners import Runner # InvocationContext, Session are likely used by Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
-
-# Import your agent and tools
-from agent import root_agent
-from tools import store_chat_message
 
 # Load environment variables
 load_dotenv()
@@ -57,7 +54,7 @@ async def chat_endpoint(chat_request: ChatRequest):
     user_id = "anonymous_user"  # You might want to pass this from the frontend
 
     # --- 1. Create session ---
-    session = await session_service.create_session(
+    session = session_service.create_session( # REMOVED await
         app_name=runner.app_name,
         user_id=user_id,
         session_id=session_id
@@ -97,8 +94,8 @@ async def chat_endpoint(chat_request: ChatRequest):
                     new_message=content
                 ):
                     print(f"Received event: {event}")  # Debug print
-                    print(f"Event type: {getattr(event, 'event_type', None)}")  # Debug print
-                    print(f"Event content: {getattr(event, 'content', None)}")  # Debug print
+                    # print(f"Event type: {getattr(event, 'event_type', None)}") # Kept for debugging if needed
+                    # print(f"Event content: {getattr(event, 'content', None)}") # Kept for debugging if needed
                     
                     # Check for function response errors
                     if (hasattr(event, 'content') and 
@@ -112,12 +109,14 @@ async def chat_endpoint(chat_request: ChatRequest):
                         if 'Database query error' in error_msg:
                             # Handle database query errors specifically
                             final_agent_response = "I apologize, but there seems to be an issue with the database query. Please make sure to use single quotes for text values, for example: WHERE cat_name = 'Tommy'"
+                            # Consider storing this specific error response in chat_history as well
+                            # store_chat_message(f"BotError: {final_agent_response}")
                             return ChatResponse(response=final_agent_response, session_id=session_id)
 
                     # Handle any event that has content with parts
                     if hasattr(event, 'content') and hasattr(event.content, 'parts'):
                         parts = event.content.parts
-                        print(f"Response parts: {parts}")  # Debug print
+                        # print(f"Response parts: {parts}") # Kept for debugging if needed
                         for part in parts:
                             if hasattr(part, 'text') and part.text:
                                 final_agent_response = part.text.strip()
@@ -138,6 +137,8 @@ async def chat_endpoint(chat_request: ChatRequest):
                     continue
                 elif retry_count >= max_retries:
                     final_agent_response = "I apologize, but the service is currently experiencing high load. Please try again in a few moments."
+                    # Consider storing this specific error response in chat_history
+                    # store_chat_message(f"BotError: {final_agent_response}")
                     return ChatResponse(response=final_agent_response, session_id=session_id)
                 else:
                     raise  # Re-raise any other exceptions
@@ -149,14 +150,14 @@ async def chat_endpoint(chat_request: ChatRequest):
     except Exception as e:
         print(f"Error running agent: {e}")
         print(f"Full error details: {type(e).__name__}: {str(e)}")  # Enhanced error logging
+        # The following comment is a consideration, not dead code.
         # Storing the error message itself in chat history might be an option here too
-        # store_chat_message(f"Error in agent processing: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}. Check server logs for details.")
+        # store_chat_message(f"Error in agent processing: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}. Check server logs for details.")
 
     # --- 4. Store Agent Response ---
     # The agent is instructed to call store_chat_message for its responses.
-    # We might not need to explicitly call it here if the agent reliably does it.
-    # However, for redundancy or if the agent might not always call it:
+    # Explicitly calling it here provides redundancy.
     if final_agent_response:
         bot_message_to_store = f"Bot: {final_agent_response}"
         print(f"Attempting to store bot response: {bot_message_to_store[:100]}...")
@@ -173,5 +174,6 @@ async def chat_endpoint(chat_request: ChatRequest):
 if __name__ == "__main__":
     import uvicorn
     print("Starting FastAPI app...")
-    print(f"Agent instruction: {root_agent.instruction}")
+    # The following print can be very verbose, consider removing or shortening if not needed for debugging.
+    # print(f"Agent instruction: {root_agent.instruction}") 
     uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)

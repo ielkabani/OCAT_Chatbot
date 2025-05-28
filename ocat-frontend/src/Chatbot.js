@@ -8,6 +8,7 @@ function Chatbot() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -17,37 +18,65 @@ function Chatbot() {
     scrollToBottom();
   }, [messages]);
 
+  // Automatically focus the input field when the component mounts
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  // New useEffect to focus input after bot replies (when loading becomes false)
+  useEffect(() => {
+    // Only focus if loading has just finished (is false)
+    // and there are messages (meaning a send/receive cycle likely happened)
+    // and the inputRef is available.
+    // This prevents focusing on initial load if loading starts as false.
+    if (!loading && messages.length > 0 && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [loading, messages]); // Re-run this effect when loading or messages change
+
   const sendMessage = async () => {
     if (!input.trim()) return;
     setLoading(true);
     const userMessage = { sender: "user", text: input };
-    setMessages([...messages, userMessage]);
+    // Update messages using a functional update to ensure we have the latest state
+    setMessages(prevMessages => [...prevMessages, userMessage]);
+    
+    // Clear input immediately after capturing its value for the user message
+    const currentInput = input;
+    setInput(""); // Clear input sooner
+
     try {
       const res = await fetch("http://localhost:8000/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          message: input,
+          message: currentInput, // Use the captured input
           session_id: "default_session",
-          history: messages.map(msg => ({
+          // Pass the most up-to-date messages state for history
+          // Note: `messages` here might not include `userMessage` yet due to async nature of setMessages
+          // For more accurate history, consider how `messages` state is managed or passed.
+          // A common pattern is to build history from `prevMessages` if needed immediately.
+          // However, for this specific focus issue, the current history mapping is likely okay.
+          history: messages.map(msg => ({ // This `messages` is from the closure of sendMessage
             sender: msg.sender,
             content: msg.text
           }))
         }),
       });
       const data = await res.json();
-      setMessages((msgs) => [
-        ...msgs,
+      setMessages(prevMessages => [
+        ...prevMessages,
         { sender: "bot", text: data.response },
       ]);
     } catch (err) {
-      setMessages((msgs) => [
-        ...msgs,
+      setMessages(prevMessages => [
+        ...prevMessages,
         { sender: "bot", text: "Error: Could not reach chatbot." },
       ]);
     }
-    setInput("");
+    // setInput(""); // Moved up to clear input sooner
     setLoading(false);
+    // REMOVED: inputRef.current?.focus(); // This will be handled by the useEffect now
   };
 
   return (
@@ -94,6 +123,7 @@ function Chatbot() {
             className="d-flex gap-2"
           >
             <Form.Control
+              ref={inputRef}
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -102,7 +132,7 @@ function Chatbot() {
             />
             <Button
               type="submit"
-              disabled={loading || !input.trim()}
+              disabled={loading || !input.trim()} // Check original input, not the potentially cleared one
             >
               Send
             </Button>
