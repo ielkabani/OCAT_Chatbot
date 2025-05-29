@@ -54,7 +54,7 @@ async def chat_endpoint(chat_request: ChatRequest):
     user_id = "anonymous_user"  # You might want to pass this from the frontend
 
     # --- 1. Create session ---
-    session = await session_service.create_session(  # <-- ADD await here
+    session = session_service.create_session(  
         app_name=runner.app_name,
         user_id=user_id,
         session_id=session_id
