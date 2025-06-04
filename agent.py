@@ -5,6 +5,7 @@ from google.adk.tools import FunctionTool
 run_sql_query_tool = FunctionTool(run_sql_query)
 store_chat_message_tool = FunctionTool(store_chat_message)
 
+
 # Single, consolidated schema_info
 schema_info = """
 Database schema:
